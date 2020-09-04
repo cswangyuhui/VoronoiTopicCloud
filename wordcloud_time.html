@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>VoronoiTopicCloud</title>
+    <meta charset="utf-8" />
+    <link href="css/tooltip.css" rel="stylesheet" />
+    <style>
+        body {
+            background-color: white;
+            text-align:center;
+        }
+        #foamtree {
+            position: absolute;
+            top: 0; bottom: 0;
+            left: 0; right: 0;
+            margin:0 auto;
+            width: 1000px;
+            height: 650px;
+            border:1px solid #F00;
+        }
+        #info {
+            font-size: 12px;
+            font-family: Roboto Condensed, sans-serif;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            color: rgba(255, 255, 255, 0.5);
+            padding-bottom: 4px;
+            padding-left: 2px;
+        }
+        .tooltip {
+        pointer-events: auto;
+        max-width: none;
+        background-color: #eee;
+        box-shadow: 0 0 50px rgba(0, 0, 0, 0.3);
+        border: 1px solid;
+        transition: background-color 0.3s linear;
+      }
+      .tooltip p {
+        color: #000;
+        text-shadow: none;
+        margin-bottom: 3px;
+      }
+      #label {
+        border: none;
+        /*text-align: center;*/
+        font-size: 16px;
+        width: 18em;
+        height: 15em;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+        <div id="foamtree"></div>
+        <!--<div id="info">Click on photo for full view. Click again to get back to all photos.&nbsp;&nbsp;&nbsp;Copyrights are owned by 2513060886@qq.com.</div>-->  
+        <!--<script src="js/carrotsearch.foamtree.js"></script>-->
+        <script src="js/no-watermark-foamtree.js"></script>
+        <script src="js/blur.js"></script>
+        <script src="js/tooltip.min.js"></script>
+    <script>
+        var foamtree = new CarrotSearchFoamTree({
+            id: "foamtree",
+            pixelRatio: window.devicePixelRatio || 1,
+
+            // Use a simple fading animation
+            rolloutDuration: 0,
+            pullbackDuration: 0,
+            fadeDuration: 300,
+            relaxationVisible: true, 
+            groupBorderWidth: 0.5,
+            //layout: "squarified",
+            //layout: "ordered",
+            layout: "relaxed",
+            relaxationInitializer: "ordered",
+            // Make the polygon fill entire viewport when exposed
+            groupExposureZoomMargin: 0.01,
+
+            // Draw the attribution in dark colors to match the theme of this demo
+            //attributionTheme: "dark",
+
+            // Draw custom content during animations
+            wireframeContentDecorationDrawing: "always",
+
+            // The decorator that draws our images and loading spinner animation.
+            groupContentDecorator: function (opts, props, vars) {
+            // console.log(props.group);
+            // The canvas 2d context on which we'll be drawing
+            var ctx = props.context;
+
+            // The group we're requested to draw. Note that due to the incremental
+            // drawing optimizations, the list and order of specific groups FoamTree will
+            // request us is user-interaction dependent and arbitrary in general.
+            var group = props.group;
+
+            // Current time, we'll need it to draw animations
+            var now = Date.now();
+
+            // Don't draw default labels and polygons, we'll draw everything on our own.
+            //vars.groupLabelDrawn = false;
+            //if(group.flag == true)
+            vars.groupLabelDrawn = false;
+            vars.groupPolygonDrawn = false;
+
+            // Here we handle the fading-in of the image that was just loaded and
+            // fading-out of the loading spinner animation.
+            // var imageAlpha = 0;
+            // if (group.image) {
+            //     // Image is available, fade it in
+            //     imageAlpha = Math.min(1, (now - group.imageLoadedTime) / 300);
+            //     ctx.globalAlpha = imageAlpha;
+            //     drawImage();
+            // }
+            // if (imageAlpha < 1 || group.loading) {
+            //     // Image still loading of fading-in, draw spinner animation.
+            //     // We'll also draw the spinner when we're loading more of
+            //     // authors photos.
+            //     ctx.globalAlpha = group.loading ? 1.0 : 1 - imageAlpha;
+            //     drawSpinner();
+            //     // Schedule a redraw of this group.
+            //     foamtree.redraw(false, group);
+            // }
+            var imageAlpha = 0;
+            if (group.image&&group.summarize) {
+              imageAlpha = 1;
+              ctx.globalAlpha = imageAlpha;
+              drawImage();
+            }
+            //foamtree.redraw(false, group);
+
+            //
+            // Draws the image in the group's polygon.
+            //
+            // If the group is exposed, we'll show the whole image. To fill the remaining space in the polygon,
+            // we'll draw the blurred version of the same image as the backdrop.
+            //
+            function drawImage() {
+                // If the group's polygon changed or image has just loaded, recompute the geometry-dependent elements.
+                if (props.shapeDirty || (group.imageLoaded && group.summarizeLoaded)) {
+                    // group.imageLoaded = true;
+                    // group.summarizeLoaded = true;
+
+                    // Bounding box of the polygon
+                     group.boundingBox = CarrotSearchFoamTree.geometry.boundingBox(props.polygon);
+
+                    // Rectangle inscribed in the polygon. We'll set the aspect ratio of the rectangle to be the
+                    // same as the aspect ratio of the image. When the group is exposed, we'll draw the full
+                    // image in the inscribed rectangle.
+                    group.inscribedBox = CarrotSearchFoamTree.geometry.rectangleInPolygon(
+                    props.polygon, props.polygonCenterX, props.polygonCenterY, group.image.width / group.image.height, 1);
+
+                    // Check if there's enough space for the label. If not, shift the inscribed box upwards a bit.
+                    var descriptionHeight = group.boundingBox.y + group.boundingBox.h - group.inscribedBox.y - group.inscribedBox.h;
+                    var minDescriptionHeight = 0.125 * group.boundingBox.h;
+                    if (descriptionHeight < minDescriptionHeight) {
+                    group.inscribedBox = CarrotSearchFoamTree.geometry.rectangleInPolygon(
+                    props.polygon, props.polygonCenterX, props.polygonCenterY - (minDescriptionHeight - descriptionHeight), group.image.width / group.image.height, 0.95);
+                    }
+
+                    // Clear the label buffer. We'll lay out the label when needed.
+                    group.labelBuffer = null;
+                }
+
+                // Choose the right resolution image. We randomize the point at which we switch to the
+                // high-res image for each group, so that not all groups switch at once. This
+                // makes zooming much smoother.
+                // var image;
+                // if (group.hiresImage &&
+                //     (group.boundingBox.w * props.viewportScale * group.random > group.image.width ||
+                //     group.boundingBox.h * props.viewportScale * group.random > group.image.height)) {
+                //     image = group.hiresImage;
+                // } else {
+                //     image = group.image;
+                // }
+                var image = group.image;
+
+                // To ensure a smooth transition between the cropped and full image view, we'll animate the
+                // image rectangle during the expose animation.
+                var mainImageBox;
+                var exposure = props.exposure;
+                if (exposure <= 0) {
+                    // Not exposed, render cropped image
+                    mainImageBox = group.boundingBox;
+                } else if (exposure == 1) {
+                    // Exposed, render full image
+                    mainImageBox = group.inscribedBox;
+                } else {
+                    // Expose animation in progress, transition the image rectangle geometry.
+                    mainImageBox = {
+                        x: group.boundingBox.x * (1 - exposure) + group.inscribedBox.x * exposure,
+                        y: group.boundingBox.y * (1 - exposure) + group.inscribedBox.y * exposure,
+                        w: group.boundingBox.w * (1 - exposure) + group.inscribedBox.w * exposure,
+                        h: group.boundingBox.h * (1 - exposure) + group.inscribedBox.h * exposure
+                    };
+            }
+
+            // Set the group polygon path on the drawing context.
+            ctx.beginPath();
+            props.polygonContext.replay(ctx);
+            ctx.closePath();
+
+            // Since the image is larger than the polygon, we'll need to apply
+            // clipping so that we don't draw beyond the polygon's area.
+            ctx.save();
+            ctx.clip();
+
+            // If the group is exposed, draw full image and the blurred backdrop.
+            if (exposure > 0) {
+                // Make the backdrop a bit darker.
+                ctx.fillStyle = "#000000";
+                ctx.fill();
+
+                // Due to a bug in Flick API, we may not be able to blur the image.
+                // If blurred image is not available, draw a heavily cropped original image
+                // as the background and make it even darker.
+                ctx.save();
+                //ctx.globalAlpha *= group.blurredImage ? 0.6 : 0.3;
+                ctx.globalAlpha *= 0.5
+                //drawImageInBox(group.blurredImage || group.image, group.boundingBox, group.blurredImage ? undefined : 2);
+                //drawImageInBox(group.image, group.boundingBox);
+                drawImageInBox(group.image, group.boundingBox, 1);
+                ctx.restore();
+          }
+          if (exposure < 0.1) {
+                    // We'll record the label information into a separate drawing buffer, so that
+                    // we need to re-layout text (which is costly) only when the geometry of the polygon changes.
+                    if (!group.labelBuffer) {
+                    // Texts to draw. We use unbreakable spaces (\u00a0) to make sure they fit in one line each.
+                    var title = group.title;
+
+                    // Create the label buffer
+                    group.labelBuffer = ctx.scratch();
+
+                    // Put the title line directly below the image rectangle.
+                    var info = group.labelBuffer.fillPolygonWithText(props.polygon,
+                                                                 props.polygonCenterX, group.inscribedBox.y + group.inscribedBox.h,
+                                                                 //title, { verticalAlign: "top", maxFontSize: group.boundingBox.h / 20, fontFamily: "Roboto Condensed" });
+                                                                 title, { verticalAlign: "top", maxFontSize: 16, fontFamily: "Roboto Condensed" });    
+                    }   
+
+                // Fade-in the label
+                ctx.fillStyle = "rgba(0, 0, 0, 1)";
+                group.labelBuffer.replay(ctx);
+              }
+
+          //Draw the main image
+          // Draw the main image
+          if (exposure > 0) {
+          //if (exposure > 0 || props.hovered) {
+                drawImageInBox(image, mainImageBox);
+          } else {
+            // ctx.save();
+            // ctx.globalAlpha *= 0.9;
+            // drawImageInBox(group.summarize, mainImageBox);
+            // ctx.restore();
+            //ctx.save();
+            //drawImageInBox(group.background, group.boundingBox);
+            drawImageInBox(group.summarize, group.inscribedBox);
+            //ctx.restore();
+          }
+
+          ctx.restore();
+
+          //如果group expose了，画一个不易察觉的边际线
+          // Draw a subtle polygon outline
+          ctx.strokeStyle = props.exposure > 0 || props.hovered ? "rgba(255, 255, 255, 0.25)" : "rgba(0, 0, 0, 0.4)";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Draws the image positioned in the provided rectangle.
+          function drawImageInBox(image, box, multiplier) {
+            var groupWidthToHeight = box.w / box.h;
+            var imageWidthToHeight = image.width / image.height;
+
+            var scale = groupWidthToHeight < imageWidthToHeight ?
+                box.h / image.height : box.w / image.width;
+
+            var xOffset = box.x / scale, yOffset = box.y / scale;
+            if (groupWidthToHeight < imageWidthToHeight) {
+              scale = box.h / image.height;
+              xOffset -= (image.width - box.w / scale) / 2;
+            } else {
+              scale = box.w / image.width;
+              yOffset -= (image.height - box.h / scale) / 2;
+            }
+
+            group.scale = scale;
+
+            ctx.save();
+            ctx.scale(scale, scale);
+            ctx.translate(xOffset, yOffset);
+            if (multiplier) {
+              ctx.translate(image.width / 2, image.height / 2);
+              ctx.scale(multiplier, multiplier);
+              ctx.translate(-image.width / 2, -image.height / 2);
+            }
+            ctx.drawImage(image, 0, 0);
+            ctx.restore();
+          }
+        }
+      },
+
+      // Call group content decorator on every polygon draw.
+      groupContentDecoratorTriggering: "onSurfaceDirty",
+
+      // Expose group on single click
+      onGroupClick: function (e) {
+        e.preventDefault();
+
+        // Unexpose if clicked outside of any polygon
+        if (!e.group) {
+          this.set("exposure", null);
+          return;
+        }
+        console.log(e.group);
+        console.log(foamtree.get("state", e.group));
+        switch (this.get("state", e.group).exposure) {
+          case -1:
+          case 0:
+            this.set("exposure", e.group);
+            this.set("open", e.group);
+            break;
+
+          case 1:
+            // Clicked group is exposed, unexpose.
+            this.set("exposure", null);
+            this.set("open", { all: true, open: false });
+            break;
+        }
+      },
+
+      // Prevent default action (expose) on double click
+      onGroupDoubleClick: function (e) {
+        e.preventDefault();
+      }
+    });
+
+    var images=new Array();
+    //var weights = [9,9,10,11,10,9,10,11,10,9];
+    //var weights = [10,10,10,10,10,10,10,10,10,10];
+    var weights = [10,9.9,9.8,9.7,9.6,9.5,9.4,9.3,9.2,9.1];
+    //var weights = [10,9.8,9.6,9.4,9.2,9.0,8.8,8.6,8.4,8.2];
+    var time_list = ['2019-09-01','2019-09-02','2019-09-03','2019-09-04','2019-09-05',
+                    '2019-09-06','2019-09-07','2019-09-08','2019-09-09','2019-09-10']
+    var group_text = ["#中国男篮险胜韩国##中国男篮险胜韩国#立功！#中国男篮vs韩国男篮#比赛最后时刻，郭艾伦里突外投连拿5分，#郭艾伦关键三分#帮助中国队反超，最终中国男篮以77:73的比分险胜韩国，不过想要拿到奥运会的入场券还要继续加油啊！腾讯体育的微博视频\n\n#中国男篮险胜韩国#【郭艾伦赛后：想做贡献心有不甘得到锻炼】郭艾伦：这场比赛对我们来说很难，背负了太多的压力。上一场球背负太大压力，导致发挥失常。大家想从困境中走出来，马上投入下一场比赛，这个过程很难。今天，大家做得很好，不是说比赛打得有多精彩，只有我们自己知道心里的感受，外人体会不到。这几场比赛是我职业生涯的写照，非常锻炼我。#中国男篮vs韩国男篮##中国男篮险胜韩国#\n\n#中国男篮险胜韩国#立功！#中国男篮vs韩国男篮#比赛最后时刻，郭艾伦里突外投连拿5分，#郭艾伦关键三分#帮助中国队反超，最终中国男篮以77:73的比分险胜韩国，不过想要拿到奥运会的入场券还要继续加油啊！腾讯体育的微博视频\n\n#具惠善控制欲##具惠善控制欲#我真的越来越恐婚#中国男篮vs韩国男篮#阿联阿伦冲啊啊啊啊啊\n\n象鼻子吹气球:西安微评:【吸烟再添一项罪证！烟雾会让超级细菌变强大】吸烟会诱发多种癌症，已被证实。英国《科学报告》刊登的一项最新研究还发现，烟雾还会使一些超级细菌变得更强大。#董又霖没采访邓伦##中国男篮vs韩国男篮#\n\n#中国男篮险胜韩国#【中国男篮vs韩国男篮】最后时刻，@郭艾伦连拿5分，#郭艾伦关键三分#帮助中国队反超，最终以77:73的比分险胜韩国。9月8日晚8点，中国男篮将与尼日利亚男篮进行最后一场排位赛，期待",
+                      "#FIBA世界杯#周末了，错过两场比赛了!我和我爸说。我爸:好在你没看!艹塔nd我:。。。。我好奇的回去看赛后分析，确实，，中国男篮确实回家要好好训练了，基本功都没扎实。两场比赛都打得可惜呀！但我也知道他们在默默的努力，现在的表现不足以去否定他们，网络上有太多喷子，我想应该要向广州球迷们看齐。当然，我仍然会是他们#中国男篮#的球迷，今年我是第一年踏下追球之路，未来也会是，一直是。。在这里我收获了一个篮球偶像@郭艾伦先不详说切下来的一场比赛要好好打，胜利很难说，但是一定要发挥出真实水平，更希望是超常水平。机会只有一次了，东京奥运会。我也会去认真看这场比赛，别让我失望。最后，预祝#中国男篮#取得的胜利，不负韶华。还是那句话，中国男篮未来可期。现为一个初中生球迷心声\n\n【男篮启程回京赵睿穿着引争议】今天下午，#中国男篮无缘直通东京奥运#启程返京，#赵睿穿美国队外套#引发网友热议。图中可以看到，#赵睿#今天身着一件长袖美国队运动外套走出酒店门口，左袖印着USA，左胸印着美国国旗。\n\n#中国男篮返京#但#赵睿穿美国队外套#引来网友热议！如今，中美贸易大战美国又对香港局势指手画脚的#赵睿#却穿美国队外套，不妥，不妥！！！\n\n#赵睿穿美国队外套##中国男篮返京#赵睿穿的外套亮了，你怎么看#中国男篮返京#赵睿穿的外套亮了，你怎么看\n\n#赵睿#中国男篮返京#中国男篮无缘直通东京奥运#赵睿去NBA\n\n#中国男篮无缘直通东京奥运##中国男篮无缘直通东京奥运#看了男篮又输了，没敢看直播，心里承受能力很低，看易建联的MVP感觉有种自己玩王者荣耀那种感觉，不过相比更难过，难过到边看视频边流泪的，这应该就是国家责任感吧，那时候2008年.高考完放假家里干活，抽空看奥运会看女排，看男篮最喜欢当时是王大郅，跟孙悦，印象深刻，我不知道什么时候体坛会再杀出来一批黑马，总之竞技体育不能靠一个人，带着中国男篮走向成功是要几个核心力量，团结一致才能越来越好，心态差不敢看直播，特别像自己家的事所以更害怕，我们泱泱大国在选拔人才一定要公平公正啊，这毕竟是十几亿人兴衰荣辱息息相关，2019年，再次感谢今晚的Mvp",
+                      "c李鑫一的小甜甜:中国男篮加油#李鑫一##李鑫一就让我走##就让我走#@李鑫一Rex\n\n#李易峰场边给郭艾伦加油##李易峰#lyf中国队好棒！！李易峰全国投票团:恭喜中国男篮旗开得胜取得开门红！祝中国男篮一路高奏凯歌！@李易峰#李易峰##李易峰场边给郭艾伦加油#\n\n2要来一口养乐多吗:#李鑫一就让我走#@李鑫一Rex陪李鑫一一起为中国男篮加油#中国男篮加油##篮球世界杯#\n\n#FIBA世界杯#@李易峰和@朱一龙现身场边观战，为中国男篮首战加油！#中国男篮加油##李易峰朱一龙同框#\n\n#中国男篮加油##白敬亭这就是灌篮#\n\n无限风光在易峰:谢谢，好棒妮可妮可妮5201314:#李易峰场边给郭艾伦加油##李易峰#@李易峰我很淡定，是真的，真的，的。还是要说一句，中国队，加油！！！无限风光在易峰:峰的手语是什么意思颜兮的喵三岁丶:冷静冷静还是要说一句中国男篮加油！决赛见！",
+                      "#主播说联播#【#央视主播谈到姚头叹琦#】李梓萌：昨晚，中国男篮惜败波兰队。网友纷纷转发姚明的表情包，还创造了一个新词姚头叹琦男篮队员们转的却是另一张图，内容是大家在球场上团结奋战，画风完全不一样。团结起来，继续加油！央视新闻的微博视频\n\n#彩票老聂#【#央视主播谈到姚头叹琦#】昨晚，中国男篮惜败波兰队。网友纷纷转发姚明的表情包，还创造了一个新词姚头叹琦男篮队员们转的却是另一张图，内容是大家在球场上团结奋战，画风完全不一样。团结起来，继续加油！央视新闻的微博视频\n\n#字母哥救球#字母哥极限救球！这一幕像极了罗德曼。为了能让希腊小组出线，字母哥真的拼了！最终希腊以103：97击败新西兰，昂首挺进世界杯16强#开启你的主场#腾讯体育的微博视频\n\n#中国队抬起头#虽然惜败，但是这绝不是终点虽然咱们还嫩了点，但是以后还有很多机会呀中国男篮向前看吧#给中国队打call#心疼易建联娱乐扒皮的微博视频\n\n#戒掉杨超越##中国男篮险胜韩国#【全靠自己！】中国男篮回到更衣室，姚明与队员们一一击掌：全靠自己！全靠自己！#我为篮狂#央视体育的微博视频\n\n#篮球世界杯##为中国队打call#那个男人来了！米德尔顿45度角3分命中！圈哥从不走步的微博视频",
+                      "#中国男篮惜败尼日利亚##姚明一个字回应##姚明哭了##姚明#今天男篮回京，赵睿这衣服什么水平\n\n【足球记者批评姚明不专业！】昨天的比赛中，篮协主席姚明开场时坐在替补席后面的位置，等到休息的时候更是亲自上场指导周琦，这样一幕也随即上了热搜。足球名记赵震指出：姚明这场坐到教练席上，本身就是对专业人做专业事的一种打脸。面对球迷们的质疑，赵震也在评论区回应道：他坐到替补席那一刻起就已经背弃了专业，就做主席来讲姚主席还没超过李元伟呢吧！对于他的观点，各位怎么看#足球记者批评姚明不专业##姚明指导周琦##中国男篮险胜韩国#\n\n#姚明#【中国男篮失利谁负责#姚明一个字回应#：我】男篮失利后记者提问：如果说要有一个人来负责，这个人会是谁姚明只说了一个字：我！永远的大哥！有担当！期待姚主席改革开花结果！#篮球世界杯#中国男篮失利谁负责姚明一个字回应：我中国男篮失利谁负责姚明一个字回应：我\n\n#姚明哭了#最后时刻，中国队追分无望，姚明在场下红了眼眶#姚明哭了#，他比任何人都知道这场比赛对于中国男篮的意义，对于整个中国篮球的意义，很遗憾，一个时代将结束，但我们还会再回来#给中国队打call#腾讯体育的微博视频\n\n#美国vs日本##姚明也算是巴掌脸吧##中国男篮#08奥运会十佳球，本以为是美好的开始，没想到却是巅峰怀念#姚明##王治郅#@易建联@王仕鹏7#朱芳雨##陈江华##刘炜##孙悦##杜峰##王磊##张庆鹏#\n\n#姚明一个字回应#中国男篮在姚明手里创下辉煌，在易建联这里止步奥运赛场。姚明尽力了，易建联更是拼尽全力！但是一己之力，无法回天！竟不知道该怪谁！#易建联太拼##姚明哭了#此刻最想抱抱谁安慰谁",
+                      "#中国男篮##心疼易建联##心疼易建联##易建联拼了##易建联#\n\n今夜的中国男篮，是一个伤感的话题。没来得及看比赛，刚看了姚明那个采访，记者问：如果一定要有一个人来承担这次失利的责任，你觉得会是谁。姚不假思索：我！这不是我们平时看到的姚主席，那个挺有幽默感，挺有头脑的人，这个掷地有声的我显得有那么一丝悲壮，有一丝这一切都由我来扛的承担感。致敬!的确，在中国，如果一件事上升到国家层面，怎么做都是不容易的，因为你承载的是14亿人的寄托，14亿人的希望，即便你过程再令人满意，结果不对就一切都不对。罢了。致敬易建联，这个中国男篮的英雄，他在中国男篮的成长过程，就是我们这一代90后的成长过程，或许我们再也看不到他在国家队的赛场上了，或许一个时代就结束了！平时不善言辞的阿联今晚有金句：我们总说时间还长，慢慢来，但这么一晃一晃就都过去了，再也没有给我们证明的机会了。致敬易建联。不对中国男篮说加油了，对我们自己说，对我们这个时代的人说。#中国男篮##易建联##心疼易建联##致敬易建联##姚明哭了#\n\n#中国vs委内瑞拉##易建联##心疼易建联##易建联#从王7朱8等老将陆续退役开始，中国男篮直线走上了下坡路，阿联一个人酷酷的扛着男篮前进，如果没有阿联，也许前面两届奥运会都没办法进去，我在想，等阿联都退役了，中国男篮的未来，会在哪里阿联是35的老将了，别的国家35岁运动员基本都退役或者做教练经理了，唯独阿联，还要苦苦支撑，看着不争气是队友和教练，这是何等的心酸\n\n#易建联#每次队友失误后都要给阿联一个特写不要虐阿联！阿联的表情太让人心疼了不要再虐阿联了我们都离不开阿联啊阿联你怎么脾气这么好阿联你怎么素质这么高呢让人心疼的阿联啊@易建联#易建联##易建联##中国男篮波兰男篮##中国男篮惜败波兰##中国男篮加油##男篮世界杯#\n\n#篮球世界杯##中国男篮不敌尼日利亚##易建联太拼##心疼易建联##周琦五犯离场#男篮这次有大面积伤病，这是客观原因，但是这批球员的潜力还是没有完全发挥出来，这是主教练能力的问题，战术也不是很恰当，吐槽的人多，让人费解，所以，我们问题很多，路很长，也不好走。\n\n为什么还有人喷他只得8分，32岁的老将手指受伤还没恢复，脚肿了还缠着绷带，不是他最后的抢断会有大侄子三分最后一刻死死抱着球蹲在地上的背影你们都不知道他多想赢#中国男篮险胜韩国##易建联空接暴扣##易建联致命抢断##心疼易建联##中国男篮vs韩国男篮#",
+                      "难忘逝去的岁月，姚明职业生涯全回顾从初出茅庐的少年到NBA状元，接着开启属于自己的姚时代，每年姚明总要在NBA与国家队中徘徊，退役后担任篮协主席，姚明可以说将自己贡献给了中国篮球，姚主席挺你！！！#世界杯稳不稳##2019篮球世界杯##篮球世界杯##中国男篮返京##篮球世界杯#来自@微观篮球\n\n#中国男篮世界杯#我提出了问题中国男篮输了，虽然打得不理想，大家认为裁判员是否公正呢连希腊队都提出质疑了大家怎么看中国男篮输了，虽然打得不理想，大家认为裁判员是否公正呢连希腊队都提出质疑了大家怎么看#中国男篮世界杯##中国男篮世界杯#\n\n#双色球预测大乐透预测##篮球世界杯#法国再下一城，位居小组第一，美国失利，暂居小组第二，中国队必须拿下明日的委内瑞拉才可以小组第二出线#我上热搜了##男篮世界杯##篮球世界杯##中国男篮世界杯##情感##个性签名##篮球爱好者#\n\n土耳其用一场教科书式的比赛好好给中国男篮上了一课，什么才叫憾负，什么是努力！#mark##跟新浪看热点##新闻联播##2019篮球世界杯##篮球世界杯##篮球世界杯##热点#\n\n@萝卜小剧场良心制作！中国男篮MV《无名之辈》，很感动，又很热血，中国男篮加油！！#篮球世界杯##世界杯稳不稳##2019篮球世界杯#萝卜小剧场的秒拍视频\n\n#篮球世界杯16天挑战#为中国男篮进八强立个flag加油中国队#2019篮球世界杯##世界杯稳不稳#",
+                      "#中国男篮惜败波兰##中国男篮76比79不敌波兰##中国男篮憾负波兰#中国加时输了三分，能打成这样就是中国男篮算成功的，下一场拼掉非洲队还是有机会出线的，但是腾讯体育直播在最后两分钟加上加时赛系统瘫痪是啥意思你们也那么紧张干嘛#腾讯体育直播崩了##腾讯直播崩了##腾讯崩了#\n\n#男蓝世界杯#周琦我劝你自觉退出国家队吧！真的！你不配待在国家队！中国队养不起你这尊大佛！请你给年轻人一个机会让他们证明自己！#中国男篮惜败波兰##中国男篮惜败波兰#\n\n#中国男篮加油##中国男篮惜败波兰##中国男篮波兰男篮#比赛完后依旧微博朋友圈很热闹。不想多说什么，也不能说任何人。球员比球迷更想赢。下场继续努力中国队加油\n\n【尽力了！#中国男篮76比79不敌波兰#】很遗憾！但打得很不容易，找差距补不足，中国男篮继续加油！#中国男篮憾负波兰#\n\n深圳交警:#我和国旗同框##中国男篮惜败尼日利亚#致敬！为每一位拼尽全力的奋斗者！转！\n\n#ballislove#【燃爆了！#波兰主帅战中国前激情演讲#】波兰主帅：我们：我们是24个人对抗14亿人，要让每一个看了比赛的中国人，都能记住我们！这精气神太炸了#2019篮球世界杯##世界杯稳不稳#燃！波兰主帅赛前演讲曝光：让每个看过比赛的中国人记住我们",
+                      "【周琦：不敢祈求任何原谅，只求继续保有美好的愿望和初心】#周琦不敢祈求原谅#世界杯后的中国内线球员周琦，今天下午在社交媒体首次发声，他晒出了一张攀岩的图片，写道：梦魇般的一周，不敢祈求任何原谅，只求继续保有美好的愿望和初心。很快，我们将返回各自俱乐部，备战CBA新赛季。在联赛期里，重新磨砺，重新创业。#篮球世界杯##周琦世界杯后首发声#发声##周琦#\n\n孙铭徽临危受命，不辱使命赵睿弥补失误，敢打敢拼赵继伟瑕不掩瑜，积极奉献王哲林稳定输出，贡献良多翟晓川铁血硬汉，舍生忘死易建联力挽狂澜，倾其所有分界线分界线分界线方硕没睡醒郭艾伦上头了李楠神经病周琦你们随便#硬汉翟晓川##周琦发球失误##王仕鹏哭了##周琦发球失误#\n\n不是原谅你，是不怪你#周琦发球失误##周琦#中国最棒，不管怎样中国男篮最棒就像高考涂错答题卡，没有人想失误。荣辱与共#周琦#新乡\n\n#周琦躲房间不敢出门见人##周琦妻子看手机是担心周琦被骂#周琦妻子：周琦躲房间不出门，怕见人不敢去餐厅吃饭昨晚，中国男篮在1732名排位赛中首胜韩国，内线球员周琦砍下13分14篮板2盖帽完成救赎之战。周琦妻子昨晚出现在了现场为周琦和中国男篮加油，直播镜头也多次给到了她的画面。今天上午，周琦的妻子更新个人微博：紧张啊。三不沾后更紧张。只想一直盯着虎扑看有没有被骂死而已。想看看赛后能不能有余地吃下一口饭。除此之外，她还晒出了周琦的一张眼角伤病的照片。\n\n#周琦发球失误##王仕鹏哭了#王仕鹏流泪因为他知道这场比赛意味着什么，中国男篮需要这一场硬碰硬的胜利，在姚明王治郅退役之后，易建联扛起了中国男篮的大旗，试问易帝退役之后谁又能把中国男篮的大旗扛在肩上呢易建联很有可能是最后一次参加国际大赛，在这么一场打出了近乎完美的比赛中完全的奉献了自己的全部能量，还有翟晓川的热血硬汉以及孙铭辉奇兵表现，都被周琦的低级失误毁了，希望周琦吸取教育不要影响心态，下一场中国男篮必胜加油\n\n#周琦世界杯后首发声#【周琦发文：梦魇般的一周不敢祈求任何原谅】中国男篮无缘直通东京奥运会，将持外卡参加明年6月份的奥运落选赛。本次世界杯，周琦的表现备受质疑，今天周琦终于更新个人的社交媒体，他写道：梦魇般的一周，不敢祈求任何原谅，只求继续保有美好的愿望和初心。很快，我们将返回各自俱乐部，备战CBA新赛季。在联赛期里，重新磨砺，重新创业。#周琦不敢祈求原谅#",
+                      "#男篮世界杯中国队无缘16强##王仕鹏怒批男篮年轻球员#缅怀一下那时候的中国男篮吧！一代人的炽热记忆08年奥运会中国男篮VS美国全场144分钟完整版录像2008年北京奥运会，中国男篮在揭幕战中迎来强大的对手美国队，在姚明的率领下中国男篮拼出了血性，大姚开场命中三分打破僵局，陈江华晃过科比飞身上篮，孙悦大帽霍华德，易建联补篮隔扣安东尼这些画面历久弥新，成为一代中国球迷最炽热的篮球记忆。再次回看这场比赛的完整录像，依然热血沸腾#奇趣视频#\n\n#男篮世界杯#中国男篮击败韩国队之后，距离东京奥运会的直通资格只差一胜。主教练李楠坦言过去几天非常难熬，也明白队员们身上压力都很大。尽管要战胜下一个对手尼日利亚或许很难，但球队还是要通过战胜韩国所树立信心得勇气，在8号晚上的终极一战中与劲敌力战到底。记者@嘉铭KaminYeung现场报道#男篮世界杯##中国男篮#中国队\n\n#美国男篮险胜土耳其##土耳其四罚不中#我对中国男篮是带着爱的，同样的场景，昨天的比赛我简直元气大伤今天就单纯对精彩的比赛进行鼓掌欢呼比赛真棒，土耳其虽败犹荣下次心脏再大一点，别慌\n\n男篮不会也得靠归化了吧，支持先从林书豪开始#男篮世界杯中国队无缘16强##中国男篮生死战##男篮世界杯#\n\n#中国男篮科特迪瓦男篮##郭艾伦稳#总是希望向好里去的中国男篮世界杯开门红，你觉得本届中国男篮能走多远\n\n#中国男篮vs韩国男篮#真巧，中国男篮和国足队员在酒店门口相遇据记者李仪报道，结束完训练的中国男篮和踢完封闭训练赛的国足队员相遇，一同抵达所入住的酒店。中国男篮昨晚输给委内瑞拉，无缘世界杯16强，将在广州出战排位赛，明天对阵韩国。国足则是在广州北站世预赛40强赛，刚刚在封闭训练赛中以70大胜恒大预备队。#篮球世界杯##世界杯稳不稳##王仕鹏怒批男篮年轻球员#"]
+      for(var i = 0;i<=9;i++){
+        images[i] = new Object();
+        var img = new Image();
+        img.src = "/Users/wangyuhui/Desktop/time实验结果2/"+time_list[i]+".png";
+        images[i].photo = img;
+        // var background = new Image();
+        // background.src = "img/background.png";
+        // images[i].background = background;
+        var summarize = new Image();
+        summarize.src = "/Users/wangyuhui/Desktop/time实验结果2/keyword"+time_list[i]+".png";
+        images[i].summarize = summarize;
+        images[i].id = i;
+        images[i].weight = weights[i];
+        images[i].text = group_text[i];
+        images[i].title = time_list[i];
+      }
+      console.log(images);
+      var groups = images.map(function (photo) {
+        console.log(photo);
+        var group = {
+              id: photo.id,
+              weight: photo.weight,
+              text: photo.text,
+              title: photo.title,
+              //random: 0.8 + 0.2 * Math.random(),
+              // Low-resolution image
+              image: photo.photo,
+              imageLoaded: false,         // true when image has just been loaded
+              imageLoadedTime: Date.now()-3000, // time the image completed loading, used for fading-in animation
+
+              // High-resolution image
+              //hiresImage: undefined,
+
+              // True when some image-specific data is loading. We'll set this flag to true
+              // when the list of author's images is loading to show a spinner in that group.
+              //loading: false,
+              // background:photo.background,
+              // backgroundLoaded: false,
+              // backgroundLoadedTime: Date.now()-3000,
+
+              summarize: photo.summarize,
+              summarizeLoaded: false,
+              summarizeLoadedTime: Date.now()-3000,
+              // Low-resolution image loaded with CORS headers
+              //crossOriginImage: photo
+        }
+        // var img = new Image();
+        // img.onload = function () {
+        //   group.image = img;
+        //   group.imageLoaded = true;
+        //   group.imageLoadedTime = Date.now()-3000;
+        //   //foamtree.redraw(false, group);
+        // }
+        // img = photo.photo;
+
+        // var background = new Image();
+        // background.onload = function () {
+        //   group.background = background;
+        //   group.backgroundLoaded = true;
+        //   group.backgroundLoadedTime = Date.now()-3000;
+        //   //foamtree.redraw(false, group);
+        // }
+        // background = photo.background;
+
+        // var summarize = new Image();
+        // summarize.onload = function () {
+        //   group.summarize = summarize;
+        //   group.summarizeLoaded = true;
+        //   group.summarizeLoadedTime = Date.now()-3000;
+        //   //foamtree.redraw(false, group);
+        // }
+        // summarize = photo.summarize;
+        foamtree.redraw(false, group);
+        return group;
+      });
+
+    
+      foamtree.set("dataObject", {groups: groups});
+
+      // Resize FoamTree on orientation change
+      window.addEventListener("orientationchange", foamtree.resize);
+
+      // Resize on window size changes
+      window.addEventListener("resize", (function() {
+      var timeout;
+      return function() {
+        window.clearTimeout(timeout);
+        timeout = window.setTimeout(foamtree.resize, 100);
+      }
+      })());
+
+      // A simple utility for editing FoamTree labels
+      (function() {
+          var editing = false;
+          var editedGroup;
+
+          // Measure the offset of FoamTree container
+          var offsetLeft = foamtree.get("element").offsetLeft;
+          var offsetTop = foamtree.get("element").offsetTop;
+
+          // For color transition animation
+          var fadeProgress = 0;
+
+          // The textarea in which we'll be editing the label
+          var textarea = document.createElement("textarea");
+          textarea.id = "label";
+          textarea.setAttribute("readonly","readonly");
+          // textarea.addEventListener("keyup", (function () {
+          //   var lastValue = undefined;
+          //   return function () {
+          //     if (this.value != lastValue) {
+          //       lastValue = this.value;
+          //       editedGroup.label = this.value.replace(/\n/g, "\n");
+          //       foamtree.redraw();
+          //     }
+          //   };
+          // })());
+
+          // Embed the textarea in a div that will be passed to the tooltip.
+          var tipContent = document.createElement("div");
+          tipContent.innerHTML = "<p>Detail weibo content. Press Esc to close.</p>";
+          tipContent.appendChild(textarea);
+
+          // The tooltip in which to show the editor
+          var tip = new Tooltip(tipContent);
+
+          // Exit editor on Esc
+          document.addEventListener("keyup", function (e) {
+            if (e.keyCode == 27) {
+              hide();
+            }
+          });
+
+          // Show the editor on group hold
+          foamtree.on("groupHold", function (event) {
+            editedGroup = event.group;
+            console.log(editedGroup);
+            show();
+          });
+
+          // Exit the editor on various events
+          foamtree.on("groupMouseWheel", hide);
+          foamtree.on("groupExposureChanging", hide);
+          foamtree.on("groupOpenOrCloseChanging", hide);
+          foamtree.on("groupDrag", hide);
+          foamtree.on("groupClick", hide);
+
+          // Fades out the groups not being edited
+          foamtree.set("groupColorDecorator", function (opts, props, vars) {
+            if ((editing || fadeProgress > 0)) {
+              if (props.group != editedGroup) {
+                vars.groupColor.s *= (1 - fadeProgress);
+                vars.groupColor.l = vars.groupColor.l * (1 - fadeProgress) + 90 * fadeProgress;
+              } else {
+                tip.element.style.backgroundColor = "hsla(" + vars.groupColor.h + ", 40%, 75%, 0.93)";
+                tip.element.style.borderColor = "hsla(" + vars.groupColor.h + ", 100%, 40%, 0.85)";
+              }
+            }
+          });
+
+          function hide() {
+            tip.hide();
+            editing = false;
+            tweenProgress(0);
+          }
+
+          function show() {
+            if (editedGroup) {
+            //if (editedGroup && editedGroup.label) {
+              // Set textarea to the group's label
+              textarea.value = escape(editedGroup.text);
+              textarea.blur();
+              // Compute the position of the tooltip
+              var geometry = foamtree.get("geometry", editedGroup);
+              var viewport = foamtree.get("viewport");
+
+              var screenX = offsetLeft + (-viewport.x + geometry.boxLeft + geometry.boxWidth / 2) * viewport.scale;
+              var screenY = offsetTop + (-viewport.y + geometry.boxTop) * viewport.scale;
+              if (screenY < tip.height * 1.2) {
+                screenY += (geometry.boxHeight - geometry.boxHeight * 0.15) * viewport.scale;
+                tip.place("bottom");
+              } else {
+                screenY += (geometry.boxHeight * 0.15) * viewport.scale;
+                tip.place("top");
+              }
+
+              tip.position(screenX, screenY);
+              tip.show();
+              //selectAll(document.querySelector("#label"));
+              editing = true;
+
+              tweenProgress(1) || foamtree.redraw();
+            }
+
+            // Adapted from lodash
+            var reUnescapedHtml = /[&<>"'`]/g;
+            var htmlEscapes = {
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              '"': '&quot;',
+              "'": '&#39;',
+              '`': '&#96;'
+            };
+
+            function escape(str) {
+              return str && str.replace(reUnescapedHtml, function (c) {
+                return htmlEscapes[c];
+              });
+            }
+
+            function selectAll(element) {
+              var doc = document,range, selection;
+              element.focus();
+              element.select();
+            }
+          }
+
+          // Tweens a variable on which groupColorDecorator depends to create
+          // a smooth transition between default and desaturated group color.
+          function tweenProgress(to) {
+            if (fadeProgress != to) {
+              var step = fadeProgress < to ? 0.125 : -0.125;
+              fadeProgress = Math.min(1, Math.max(0, fadeProgress + step));
+              foamtree.redraw();
+              window.setTimeout(function () {
+                tweenProgress(to);
+              }, 16);
+              return true;
+            } else {
+              return false;
+            }
+          }
+        })();
+
+
+
+    </script>
+  </body>
+</html>
